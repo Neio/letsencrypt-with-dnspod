@@ -19,7 +19,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
         public bool Renew { get; set; }
 
         [Option(HelpText = "Overrides BaseUri setting to https://acme-staging.api.letsencrypt.org/")]
-        public bool Test { get; set; } = true;
+        public bool Test { get; set; } //= true;
 
         [Option(HelpText = "A host name to manually get a certificate for. --webroot must also be set.")]
         public string ManualHost { get; set; }

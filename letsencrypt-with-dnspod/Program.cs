@@ -38,9 +38,11 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
         private static void Main(string[] args)
         {
-            try {
+            try
+            {
                 var cp = CertificateProvider.GetProvider();
-            }catch(Exception ex)
+            }
+            catch (Exception ex)
             {
 
             }
@@ -203,8 +205,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
                             return;
                         }
                         var targets = new List<Target>();
-                        targets.Add(new Target() { Host = "nulldata.io" });
-
+                        targets.Add(new Target() { Host = "nulldata.io", AlternativeNames = new string[] { "www", "home", "git", "svn", "dev", "vpn", "blog", "plex", "file", "proxy" }.ToList() });
+                        targets.Where(o => o.AlternativeNames?.Count > 0).ToList().ForEach(o => o.AlternativeNames = o.AlternativeNames.Select(x => x + "." + o.Host).ToList());
                         if (targets.Count == 0 && string.IsNullOrEmpty(Options.ManualHost))
                         {
                             Console.WriteLine("No targets found.");
@@ -686,7 +688,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
             foreach (var dnsIdentifier in dnsIdentifiers)
             {
-
+                int times = 10;
+            reset:
                 log.Info(
                     $"\nAuthorizing Identifier {dnsIdentifier} Using Challenge Type {AcmeProtocol.CHALLENGE_TYPE_DNS}");
 
@@ -697,13 +700,21 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 // We need to strip off any leading '/' in the path
                 var name = dnsChallenge.RecordName.Substring(0, dnsChallenge.RecordName.Length - 1 - target.Host.Length);
                 var record = records?.FirstOrDefault(o => o.name.ToLower() == name.ToLower());
+                int rid;
                 if (record == null)
                 {
                     var r = api.Record.Create(domain.id, name, dnsChallenge.RecordValue).Result;
+                    rid = r.record.id;
                 }
                 else
                 {
                     var r = api.Record.Modify(domain.id, record.id, name, dnsChallenge.RecordValue).Result;
+                    rid = r.record.id;
+                }
+
+                while (DnspodApi.DnsGetTxtRecord(dnsChallenge.RecordName) != dnsChallenge.RecordValue)
+                {
+                    Thread.Sleep(10000);
                 }
 
                 log.Info($" Answer should now be browsable at {dnsChallenge.RecordName}");
@@ -728,6 +739,12 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     log.Info($" Authorization Result: {authzState.Status}");
                     if (authzState.Status == "invalid")
                     {
+                        if (times-- > 0)
+                        {
+                            log.Info("wait for retry...");
+                            Thread.Sleep(10000);
+                            goto reset;
+                        }
                         log.Error($"Authorization Failed {authzState.Status}");
 
                         Console.WriteLine(
@@ -742,6 +759,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     {
                         //api.Record.Modify()
                     }
+                    api.Record.Remove(domain.id, rid);
                 }
             }
             foreach (var authState in authStatus)
