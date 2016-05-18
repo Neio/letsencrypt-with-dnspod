@@ -684,12 +684,11 @@ namespace io.nulldata.letsencrypt_with_dnspod
             {
                 dnsIdentifiers.AddRange(target.AlternativeNames);
             }
-            List<AuthorizationState> authStatus = new List<AuthorizationState>();
+            var authStatus = new List<Tuple<AuthorizationState, DnsChallenge, AuthorizeChallenge, int>>();
+            var authResult = new List<AuthorizationState>();
 
             foreach (var dnsIdentifier in dnsIdentifiers)
             {
-                int times = 10;
-            reset:
                 log.Info(
                     $"\nAuthorizing Identifier {dnsIdentifier} Using Challenge Type {AcmeProtocol.CHALLENGE_TYPE_DNS}");
 
@@ -711,6 +710,14 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     var r = api.Record.Modify(domain.id, record.id, name, dnsChallenge.RecordValue).Result;
                     rid = r.record.id;
                 }
+                authStatus.Add(Tuple.Create(authzState, dnsChallenge, challenge, rid));
+            }
+            foreach (var item in authStatus.ToList())
+            {
+                var dnsChallenge = item.Item2;
+                var authzState = item.Item1;
+                var challenge = item.Item3;
+                var rid = item.Item4;
 
                 while (DnspodApi.DnsGetTxtRecord(dnsChallenge.RecordName) != dnsChallenge.RecordValue)
                 {
@@ -735,23 +742,16 @@ namespace io.nulldata.letsencrypt_with_dnspod
                         if (newAuthzState.Status != "pending")
                             authzState = newAuthzState;
                     }
-
+                    authResult.Add(authzState);
                     log.Info($" Authorization Result: {authzState.Status}");
                     if (authzState.Status == "invalid")
                     {
-                        if (times-- > 0)
-                        {
-                            log.Info("wait for retry...");
-                            Thread.Sleep(10000);
-                            goto reset;
-                        }
                         log.Error($"Authorization Failed {authzState.Status}");
 
                         Console.WriteLine(
                             "\n******************************************************************************");
                         Console.ResetColor();
                     }
-                    authStatus.Add(authzState);
                 }
                 finally
                 {
@@ -762,7 +762,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     api.Record.Remove(domain.id, rid);
                 }
             }
-            foreach (var authState in authStatus)
+
+            foreach (var authState in authResult)
             {
                 if (authState.Status != "valid")
                 {
