@@ -16,13 +16,15 @@ using ACMESharp.PKI;
 using System.Security.Cryptography;
 using ACMESharp.ACME;
 using System.Text;
+using System.Threading.Tasks;
+using Amazon.Runtime.Internal;
 using log4net;
 
 namespace io.nulldata.letsencrypt_with_dnspod
 {
     class Program
     {
-        private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly ILog log = LogManager.GetLogger("/");
         private const string ClientName = "letsencrypt-with-dnspod";
         private static string _certificateStore = "WebHosting";
         public static float RenewalPeriod = 60;
@@ -32,34 +34,29 @@ namespace io.nulldata.letsencrypt_with_dnspod
         private static string _certificatePath;
         private static AcmeClient _client;
         public static Options Options;
-
-        static bool IsElevated
-            => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
-
+        
         private static void Main(string[] args)
         {
             try
             {
-                var cp = CertificateProvider.GetProvider();
+                CertificateProvider.GetProvider();
             }
             catch (Exception ex)
             {
-
+                log.ErrorFormat("Failed when trying to load certificate provider, exception: {0}", ex);
             }
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 |
-                                                   SecurityProtocolType.Tls12;
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
 
             var commandLineParseResult = Parser.Default.ParseArguments<Options>(args);
             var parsed = commandLineParseResult as Parsed<Options>;
             if (parsed == null)
             {
-#if DEBUG
-                log.Debug("Program Debug Enabled");
+                log.Debug("Failed to parse options.");
                 Console.WriteLine("Press enter to continue.");
                 Console.ReadLine();
-#endif
-                return; // not parsed
+                return; 
             }
+
             Options = parsed.Value;
             log.Debug($"{Options}");
             Console.WriteLine("Let's Encrypt (Simple Windows ACME Client)");
@@ -90,8 +87,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
             }
             catch (Exception ex)
             {
-                log.Warn(
-                    "Error reading CertificateStore from app config, defaulting to {_certificateStore} Error: {ex}");
+                log.Warn($"Error reading CertificateStore from app config, defaulting to {_certificateStore} Error: {ex}");
             }
 
             Console.WriteLine($"\nACME Server: {BaseUri}");
@@ -102,11 +98,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 log.Info($"Using Centralized SSL Path: {Options.CentralSslStore}");
                 CentralSsl = true;
             }
-
-            //_settings = new Settings(ClientName, BaseUri);
-            //log.Debug("{@_settings}", _settings);
-            _configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ClientName,
-                CleanFileName(BaseUri));
+            
+            _configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ClientName, CleanFileName(BaseUri));
             log.Info($"Config Folder: {_configPath}");
             Directory.CreateDirectory(_configPath);
 
@@ -124,9 +117,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 }
                 catch (Exception ex)
                 {
-                    log.Warn(
-                        $"Error creating the certificate directory, {_certificatePath}. Defaulting to config path. Error: {ex}");
-
+                    log.Warn($"Error creating the certificate directory, {_certificatePath}. Defaulting to config path. Error: {ex}");
                     _certificatePath = _configPath;
                 }
             }
@@ -154,33 +145,42 @@ namespace io.nulldata.letsencrypt_with_dnspod
                         _client.GetDirectory(true);
 
                         var registrationPath = Path.Combine(_configPath, "Registration");
+
                         if (File.Exists(registrationPath))
                         {
                             log.Info($"Loading Registration from {registrationPath}");
                             using (var registrationStream = File.OpenRead(registrationPath))
+                            {
                                 _client.Registration = AcmeRegistration.Load(registrationStream);
+                            }
                         }
                         else
                         {
                             Console.Write("Enter an email address (not public, used for renewal fail notices): ");
-                            var email = Console.ReadLine().Trim();
-
-                            var contacts = new string[] { };
-                            if (!String.IsNullOrEmpty(email))
+                            var readLine = Console.ReadLine();
+                            if (readLine != null)
                             {
-                                log.Info($"Registration email: {email}");
-                                email = "mailto:" + email;
-                                contacts = new string[] { email };
-                            }
+                                var email = readLine.Trim();
 
-                            log.Info("Calling Register");
-                            var registration = _client.Register(contacts);
+                                var contacts = new string[] { };
+                                if (!String.IsNullOrEmpty(email))
+                                {
+                                    log.Info($"Registration email: {email}");
+                                    email = "mailto:" + email;
+                                    contacts = new string[] { email };
+                                }
 
-                            if (!Options.AcceptTos && !Options.Renew)
-                            {
-                                Console.WriteLine($"Do you agree to {registration.TosLinkUri}? (Y/N) ");
-                                if (!PromptYesNo())
-                                    return;
+                                log.Info("Calling Register");
+                                var registration = _client.Register(contacts);
+
+                                if (!Options.AcceptTos && !Options.Renew)
+                                {
+                                    Console.WriteLine($"Do you agree to {registration.TosLinkUri}? (Y/N) ");
+                                    if (!PromptYesNo())
+                                    {
+                                        return;
+                                    }
+                                }
                             }
 
                             log.Info("Updating Registration");
@@ -188,11 +188,15 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
                             log.Info("Saving Registration");
                             using (var registrationStream = File.OpenWrite(registrationPath))
+                            {
                                 _client.Registration.Save(registrationStream);
+                            }
 
                             log.Info("Saving Signer");
                             using (var signerStream = File.OpenWrite(signerPath))
+                            {
                                 signer.Save(signerStream);
+                            }
                         }
 
                         if (Options.Renew)
@@ -204,10 +208,21 @@ namespace io.nulldata.letsencrypt_with_dnspod
 #endif
                             return;
                         }
+
                         var targets = new List<Target>();
-                        targets.Add(new Target() { Host = "nulldata.io", AlternativeNames = new string[] { "www", "home", "git", "svn", "dev", "vpn", "blog", "plex", "file", "proxy" }.ToList() });
-                        targets.Where(o => o.AlternativeNames?.Count > 0).ToList().ForEach(o => o.AlternativeNames = o.AlternativeNames.Select(x => x + "." + o.Host).ToList());
-                        if (targets.Count == 0 && string.IsNullOrEmpty(Options.ManualHost))
+                        var domain = System.Configuration.ConfigurationManager.AppSettings["DefaultDomain"];
+                        var subDomains = System.Configuration.ConfigurationManager.AppSettings["DefaultSecondaryDomains"];
+                        if (!string.IsNullOrEmpty(subDomains) && !string.IsNullOrEmpty(domain))
+                        {
+                            targets.Add(new Target
+                            {
+                                Host = domain,
+                                AlternativeNames = subDomains.Split('|').ToList()
+                            });
+                        }
+                        targets.ForEach(o => o.AlternativeNames = o.AlternativeNames.Select(x => x + "." + o.Host).ToList());
+
+                        if (!targets.Any() && string.IsNullOrEmpty(Options.ManualHost))
                         {
                             Console.WriteLine("No targets found.");
                             log.Error("No targets found.");
@@ -215,8 +230,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                         else
                         {
                             var count = 1;
-
-
+                            
                             foreach (var binding in targets)
                             {
                                 if (!Options.San)
@@ -234,7 +248,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
                         Console.WriteLine();
 
-                        if (string.IsNullOrEmpty(Options.ManualHost))
+                        if (targets.Any() && string.IsNullOrEmpty(Options.ManualHost))
                         {
                             Console.WriteLine(" A: Get certificates for all hosts");
                             Console.WriteLine(" Q: Quit");
@@ -245,7 +259,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                                 case "a":
                                     foreach (var target in targets)
                                     {
-                                        Auto(target);
+                                        Auto(target).Wait();
                                     }
                                     break;
                                 case "q":
@@ -253,6 +267,30 @@ namespace io.nulldata.letsencrypt_with_dnspod
                                 default:
                                     break;
                             }
+                        }
+                        else
+                        {
+                            Console.Write("Please input the FQDN which you want to request a certificate:");
+                            var response = Console.ReadLine().ToLowerInvariant();
+                            if (!response.Contains('.'))
+                            {
+                                log.WarnFormat("Invalid domain name");
+                            }
+                            else
+                            {
+                                var parts = response.Split('.');
+                                if (parts.Length <= 2)
+                                {
+                                    log.WarnFormat("Please specify secondary domain.");
+                                }
+                                else
+                                {
+                                    var domainName = string.Join(".", parts.Skip(parts.Length - 2));
+                                    log.DebugFormat($"Domain is {domainName}");
+                                    Auto(new Target() { Host = domainName, AlternativeNames = new AutoConstructedList<string>() { response } }).Wait();
+                                }
+                            }
+                            
                         }
                     }
                 }
@@ -279,37 +317,31 @@ namespace io.nulldata.letsencrypt_with_dnspod
             Console.ReadLine();
         }
 
-        private static string CleanFileName(string fileName)
-            =>
-                Path.GetInvalidFileNameChars()
-                    .Aggregate(fileName, (current, c) => current.Replace(c.ToString(), string.Empty));
+        private static string CleanFileName(string fileName) => Path.GetInvalidFileNameChars().Aggregate(fileName, (current, c) => current.Replace(c.ToString(), string.Empty));
 
         public static bool PromptYesNo()
         {
             while (true)
             {
                 var response = Console.ReadKey(true);
-                if (response.Key == ConsoleKey.Y)
-                    return true;
-                if (response.Key == ConsoleKey.N)
-                    return false;
+                if (response.Key == ConsoleKey.Y) return true;
+                if (response.Key == ConsoleKey.N) return false;
                 Console.WriteLine("Please press Y or N.");
             }
         }
 
-        public static void Auto(Target binding)
+        private static async Task Auto(Target binding)
         {
-            var auth = Authorize(binding);
-            if (auth.Status == "valid")
+            var auth = await Authorize(binding);
+            if (auth?.Status == "valid")
             {
                 var pfxFilename = GetCertificate(binding);
 
                 if (Options.Test && !Options.Renew)
                 {
-                    Console.WriteLine(
-                        $"\nDo you want to install the .pfx into the Certificate Store/ Central SSL Store? (Y/N) ");
-                    if (!PromptYesNo())
-                        return;
+                    Console.WriteLine($"\nDo you want to install the .pfx into the Certificate Store/ Central SSL Store? (Y/N) ");
+
+                    if (!PromptYesNo()) return;
                 }
 
                 if (!CentralSsl)
@@ -321,8 +353,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     if (Options.Test && !Options.Renew)
                     {
                         Console.WriteLine($"\nDo you want to add/update the certificate to your server software? (Y/N) ");
-                        if (!PromptYesNo())
-                            return;
+                        if (!PromptYesNo()) return;
                     }
                     log.Info("Installing Non-Central SSL Certificate in server software");
                     //binding.Plugin.Install(binding, pfxFilename, store, certificate);
@@ -340,10 +371,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
                 if (Options.Test && !Options.Renew)
                 {
-                    Console.WriteLine(
-                        $"\nDo you want to automatically renew this certificate in {RenewalPeriod} days? This will add a task scheduler task. (Y/N) ");
-                    if (!PromptYesNo())
-                        return;
+                    Console.WriteLine($"\nDo you want to automatically renew this certificate in {RenewalPeriod} days? This will add a task scheduler task. (Y/N) ");
+                    if (!PromptYesNo())return;
                 }
 
                 if (!Options.Renew)
@@ -354,8 +383,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
             }
         }
 
-        public static void InstallCertificate(Target binding, string pfxFilename, out X509Store store,
-            out X509Certificate2 certificate)
+        public static void InstallCertificate(Target binding, string pfxFilename, out X509Store store, out X509Certificate2 certificate)
         {
             try
             {
@@ -451,10 +479,10 @@ namespace io.nulldata.letsencrypt_with_dnspod
             var sanList = binding.AlternativeNames;
             List<string> allDnsIdentifiers = new List<string>();
 
-            if (!Options.San)
-            {
-                allDnsIdentifiers.Add(binding.Host);
-            }
+            //if (!Options.San)
+            //{
+            //    allDnsIdentifiers.Add(binding.Host);
+            //}
             if (binding.AlternativeNames != null)
             {
                 allDnsIdentifiers.AddRange(binding.AlternativeNames);
@@ -657,24 +685,26 @@ namespace io.nulldata.letsencrypt_with_dnspod
             return null;
         }
 
-        public static AuthorizationState Authorize(Target target)
+        public static async Task<AuthorizationState> Authorize(Target target)
         {
-            DnspodApi api = new DnspodApi();
-            var domains = api.Domain.List().Result?.domains;
+            DnspodApi api = new DnspodApi(Options.DnspodToken);
+            var domainList = await api.Domain.List();
+            var domains = domainList?.domains;
             if (domains == null)
             {
                 log.Error("dnspod token error");
                 return null;
             }
-            var domain = domains.Where(o => o.name.ToLower() == target.Host.ToLower()).FirstOrDefault();
+
+            var domain = domains.FirstOrDefault(o => o.name.ToLower() == target.Host.ToLower());
             if (domain == null)
             {
                 log.Error($"can't found: {target.Host}");
                 return null;
             }
 
-            var records = api.Record.List(domain.id).Result?.records;
-
+            var records = (await api.Record.List(domain.id))?.records;
+            
             List<string> dnsIdentifiers = new List<string>();
             if (!Options.San)
             {
@@ -686,11 +716,10 @@ namespace io.nulldata.letsencrypt_with_dnspod
             }
             var authStatus = new List<Tuple<AuthorizationState, DnsChallenge, AuthorizeChallenge, int>>();
             var authResult = new List<AuthorizationState>();
-
+            
             foreach (var dnsIdentifier in dnsIdentifiers)
             {
-                log.Info(
-                    $"\nAuthorizing Identifier {dnsIdentifier} Using Challenge Type {AcmeProtocol.CHALLENGE_TYPE_DNS}");
+                log.Info($"\nAuthorizing Identifier {dnsIdentifier} Using Challenge Type {AcmeProtocol.CHALLENGE_TYPE_DNS}");
 
                 var authzState = _client.AuthorizeIdentifier(dnsIdentifier);
                 var challenge = _client.DecodeChallenge(authzState, AcmeProtocol.CHALLENGE_TYPE_DNS);
@@ -702,12 +731,12 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 int rid;
                 if (record == null)
                 {
-                    var r = api.Record.Create(domain.id, name, dnsChallenge.RecordValue).Result;
+                    var r = await api.Record.Create(domain.id, name, dnsChallenge.RecordValue);
                     rid = r.record.id;
                 }
                 else
                 {
-                    var r = api.Record.Modify(domain.id, record.id, name, dnsChallenge.RecordValue).Result;
+                    var r = await api.Record.Modify(domain.id, record.id, name, dnsChallenge.RecordValue);
                     rid = r.record.id;
                 }
                 authStatus.Add(Tuple.Create(authzState, dnsChallenge, challenge, rid));
@@ -721,7 +750,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
                 while (DnspodApi.DnsGetTxtRecord(dnsChallenge.RecordName) != dnsChallenge.RecordValue)
                 {
-                    Thread.Sleep(10000);
+                    log.Info($" Waiting Txt Record {dnsChallenge.RecordName}...");
+                    await Task.Delay(10000);
                 }
 
                 log.Info($" Answer should now be browsable at {dnsChallenge.RecordName}");
@@ -737,10 +767,12 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     while (authzState.Status == "pending")
                     {
                         log.Info(" Refreshing authorization");
-                        Thread.Sleep(4000); // this has to be here to give ACME server a chance to think
+                        await Task.Delay(4000); // this has to be here to give ACME server a chance to think
                         var newAuthzState = _client.RefreshIdentifierAuthorization(authzState);
                         if (newAuthzState.Status != "pending")
+                        {
                             authzState = newAuthzState;
+                        }
                     }
                     authResult.Add(authzState);
                     log.Info($" Authorization Result: {authzState.Status}");
@@ -748,8 +780,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     {
                         log.Error($"Authorization Failed {authzState.Status}");
 
-                        Console.WriteLine(
-                            "\n******************************************************************************");
+                        Console.WriteLine("\n******************************************************************************");
                         Console.ResetColor();
                     }
                 }
@@ -759,7 +790,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                     {
                         //api.Record.Modify()
                     }
-                    api.Record.Remove(domain.id, rid);
+                    await api.Record.Remove(domain.id, rid);
                 }
             }
 

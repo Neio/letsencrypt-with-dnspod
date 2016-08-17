@@ -56,11 +56,11 @@
       <HintPath>..\packages\ACMESharp.0.8.1.214-EA\lib\net45\ACMESharp.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="ACMESharp.PKI.Providers.OpenSslLib32, Version=0.8.1.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="ACMESharp.PKI.Providers.OpenSslLib32, Version=0.8.1.0, Culture=neutral, processorArchitecture=MSIL" Condition="'$(Platform)' == 'x86'">
       <HintPath>..\packages\ACMESharp.PKI.Providers.OpenSslLib32.0.8.1.214-EA\lib\net45\ACMESharp.PKI.Providers.OpenSslLib32.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="ACMESharp.PKI.Providers.OpenSslLib64, Version=0.8.1.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="ACMESharp.PKI.Providers.OpenSslLib64, Version=0.8.1.0, Culture=neutral, processorArchitecture=MSIL" Condition="'$(Platform)' == 'x64'">
       <HintPath>..\packages\ACMESharp.PKI.Providers.OpenSslLib64.0.8.1.214-EA\lib\net45\ACMESharp.PKI.Providers.OpenSslLib64.dll</HintPath>
       <Private>True</Private>
     </Reference>
@@ -137,12 +137,22 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\packages\ManagedOpenSsl32.0.6.1.3\content\x86\**" Condition="'$(Platform)' == 'x86'">
+    <ContentWithTargetPath  Include="..\packages\ManagedOpenSsl32.0.6.1.3\content\x86\libeay32.dll">
+      <TargetPath>$(OutputPath)\x86\libeay32.dll</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\packages\ManagedOpenSsl64.0.6.1.3\content\x86\**" Condition="'$(Platform)' == 'x64'">
+    </ContentWithTargetPath >
+    <ContentWithTargetPath  Include="..\packages\ManagedOpenSsl32.0.6.1.3\content\x86\ssleay32.dll">
+      <TargetPath>$(OutputPath)\x86\ssleay32.dll</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    </ContentWithTargetPath >
+    <ContentWithTargetPath  Include="..\packages\ManagedOpenSsl64.0.6.1.3\content\x64\libeay32.dll">
+      <TargetPath>$(OutputPath)\x64\libeay32.dll</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ContentWithTargetPath >
+    <ContentWithTargetPath  Include="..\packages\ManagedOpenSsl64.0.6.1.3\content\x64\ssleay32.dll">
+      <TargetPath>$(OutputPath)\x64\ssleay32.dll</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ContentWithTargetPath >
   </ItemGroup>
   <ItemGroup>
     <Analyzer Include="..\packages\AWSSDK.Route53.3.1.4.0\analyzers\dotnet\cs\AWSSDK.Route53.CodeAnalysis.dll" />

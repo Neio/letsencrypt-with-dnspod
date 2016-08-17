@@ -25,7 +25,9 @@ namespace io.nulldata.letsencrypt_with_dnspod.Dnspod
         public DnspodApi(string token = null)
         {
             if (string.IsNullOrWhiteSpace(token))
+            {
                 token = System.Configuration.ConfigurationManager.AppSettings["Dnspod.Token"];
+            }
             this.token = token;
             Domain = new DomainApi(this);
             Record = new RecordApi(this);

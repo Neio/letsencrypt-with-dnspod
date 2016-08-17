@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace io.nulldata.letsencrypt_with_dnspod
 {
-    class Options
+    internal class Options
     {
         [Option(Default = "https://acme-v01.api.letsencrypt.org/", HelpText = "The address of the ACME server to use.")]
         public string BaseUri { get; set; }
@@ -34,9 +34,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
         [Option(HelpText = "Parameters for the script for installation of non IIS Plugin.")]
         public string ScriptParameters { get; set; }
 
-        [Option(
-            HelpText =
-                "Path for Centralized Certificate Store (This enables Centralized SSL). Ex. \\\\storage\\central_ssl\\")
+        [Option(HelpText = "Path for Centralized Certificate Store (This enables Centralized SSL). Ex. \\\\storage\\central_ssl\\")
         ]
         public string CentralSslStore { get; set; }
 
@@ -48,5 +46,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
         [Option(HelpText = "Keep existing HTTPS bindings, and certificates")]
         public bool KeepExisting { get; set; }
+        
+        [Option(HelpText = "Dnspod Token, see https://support.dnspod.cn/Kb/showarticle/tsid/227/")]
+        public string DnspodToken { get; set; }
     }
 }
