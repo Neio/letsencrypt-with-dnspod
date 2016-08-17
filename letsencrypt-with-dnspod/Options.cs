@@ -41,7 +41,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
         [Option(HelpText = "Hide sites that have existing HTTPS bindings")]
         public bool HideHttps { get; set; }
 
-        [Option(HelpText = "Certificates per site instead of per host")]
+        [Option(Default = true, HelpText = "Certificates per site instead of per host")]
         public bool San { get; set; }
 
         [Option(HelpText = "Keep existing HTTPS bindings, and certificates")]

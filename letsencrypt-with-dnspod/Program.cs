@@ -313,7 +313,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 Console.ResetColor();
             }
 
-            Console.WriteLine("Press enter to continue.");
+            Console.WriteLine("All done. Press enter to exit.");
             Console.ReadLine();
         }
 
@@ -332,54 +332,61 @@ namespace io.nulldata.letsencrypt_with_dnspod
 
         private static async Task Auto(Target binding)
         {
-            var auth = await Authorize(binding);
-            if (auth?.Status == "valid")
+            try
             {
-                var pfxFilename = GetCertificate(binding);
-
-                if (Options.Test && !Options.Renew)
+                var auth = await AuthorizeUsingDns(binding);
+                if (auth?.Status == "valid")
                 {
-                    Console.WriteLine($"\nDo you want to install the .pfx into the Certificate Store/ Central SSL Store? (Y/N) ");
+                    var pfxFilename = GetCertificate(binding);
 
-                    if (!PromptYesNo()) return;
-                }
-
-                if (!CentralSsl)
-                {
-                    X509Store store;
-                    X509Certificate2 certificate;
-                    log.Info("Installing Non-Central SSL Certificate in the certificate store");
-                    InstallCertificate(binding, pfxFilename, out store, out certificate);
                     if (Options.Test && !Options.Renew)
                     {
-                        Console.WriteLine($"\nDo you want to add/update the certificate to your server software? (Y/N) ");
+                        Console.WriteLine($"\nDo you want to install the .pfx into the Certificate Store/ Central SSL Store? (Y/N) ");
+
                         if (!PromptYesNo()) return;
                     }
-                    log.Info("Installing Non-Central SSL Certificate in server software");
-                    //binding.Plugin.Install(binding, pfxFilename, store, certificate);
-                    if (!Options.KeepExisting)
+
+                    if (!CentralSsl)
                     {
-                        UninstallCertificate(binding.Host, out store, certificate);
+                        X509Store store;
+                        X509Certificate2 certificate;
+                        log.Info("Installing Non-Central SSL Certificate in the certificate store");
+                        InstallCertificate(binding, pfxFilename, out store, out certificate);
+                        if (Options.Test && !Options.Renew)
+                        {
+                            Console.WriteLine($"\nDo you want to add/update the certificate to your server software? (Y/N) ");
+                            if (!PromptYesNo()) return;
+                        }
+                        log.Info("Installing Non-Central SSL Certificate in server software");
+                        //binding.Plugin.Install(binding, pfxFilename, store, certificate);
+                        if (!Options.KeepExisting)
+                        {
+                            UninstallCertificate(binding.Host, out store, certificate);
+                        }
+                    }
+                    else if (!Options.Renew || !Options.KeepExisting)
+                    {
+                        //If it is using centralized SSL, renewing, and replacing existing it needs to replace the existing binding.
+                        log.Info("Updating new Central SSL Certificate");
+                        //binding.Plugin.Install(binding);
+                    }
+
+                    if (Options.Test && !Options.Renew)
+                    {
+                        Console.WriteLine($"\nDo you want to automatically renew this certificate in {RenewalPeriod} days? This will add a task scheduler task. (Y/N) ");
+                        if (!PromptYesNo()) return;
+                    }
+
+                    if (!Options.Renew)
+                    {
+                        log.Info($"Adding renewal for {binding}");
+                        //ScheduleRenewal(binding);
                     }
                 }
-                else if (!Options.Renew || !Options.KeepExisting)
-                {
-                    //If it is using centralized SSL, renewing, and replacing existing it needs to replace the existing binding.
-                    log.Info("Updating new Central SSL Certificate");
-                    //binding.Plugin.Install(binding);
-                }
-
-                if (Options.Test && !Options.Renew)
-                {
-                    Console.WriteLine($"\nDo you want to automatically renew this certificate in {RenewalPeriod} days? This will add a task scheduler task. (Y/N) ");
-                    if (!PromptYesNo())return;
-                }
-
-                if (!Options.Renew)
-                {
-                    log.Info($"Adding renewal for {binding}");
-                    //ScheduleRenewal(binding);
-                }
+            }
+            catch(Exception ex)
+            {
+                log.ErrorFormat($"Error occurred when handling domain {binding.Host}, Exception: {ex}");
             }
         }
 
@@ -456,7 +463,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 {
                     var subjectName = cert.Subject.Split(',');
 
-                    if (cert.FriendlyName != certificate.FriendlyName && subjectName[1] == " CN=" + host)
+                    if (cert.FriendlyName != certificate.FriendlyName && subjectName.Any(h => h == " CN=" + host))
                     {
                         log.Info($" Removing Certificate from Store {cert.FriendlyName}");
                         store.Remove(cert);
@@ -467,7 +474,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
             }
             catch (Exception ex)
             {
-                log.Error($"Error removing certificate: {ex.Message.ToString()}");
+                log.Error($"Error removing certificate: {ex}");
                 Console.ResetColor();
             }
             store.Close();
@@ -479,10 +486,10 @@ namespace io.nulldata.letsencrypt_with_dnspod
             var sanList = binding.AlternativeNames;
             List<string> allDnsIdentifiers = new List<string>();
 
-            //if (!Options.San)
-            //{
-            //    allDnsIdentifiers.Add(binding.Host);
-            //}
+            if (!Options.San)
+            {
+                allDnsIdentifiers.Add(binding.Host);
+            }
             if (binding.AlternativeNames != null)
             {
                 allDnsIdentifiers.AddRange(binding.AlternativeNames);
@@ -553,17 +560,27 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 }
 
                 using (var fs = new FileStream(keyGenFile, FileMode.Create))
+                {
                     cp.SavePrivateKey(rsaKeys, fs);
+                }
                 using (var fs = new FileStream(keyPemFile, FileMode.Create))
+                {
                     cp.ExportPrivateKey(rsaKeys, EncodingFormat.PEM, fs);
+                }
                 using (var fs = new FileStream(csrGenFile, FileMode.Create))
+                {
                     cp.SaveCsr(csr, fs);
+                }
                 using (var fs = new FileStream(csrPemFile, FileMode.Create))
+                {
                     cp.ExportCsr(csr, EncodingFormat.PEM, fs);
+                }
 
                 log.Info($" Saving Certificate to {crtDerFile}");
                 using (var file = File.Create(crtDerFile))
+                {
                     certRequ.SaveCertificate(file);
+                }
 
                 Crt crt;
                 using (FileStream source = new FileStream(crtDerFile, FileMode.Open),
@@ -685,7 +702,7 @@ namespace io.nulldata.letsencrypt_with_dnspod
             return null;
         }
 
-        public static async Task<AuthorizationState> Authorize(Target target)
+        public static async Task<AuthorizationState> AuthorizeUsingDns(Target target)
         {
             DnspodApi api = new DnspodApi(Options.DnspodToken);
             var domainList = await api.Domain.List();
