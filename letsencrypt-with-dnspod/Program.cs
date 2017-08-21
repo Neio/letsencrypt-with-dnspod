@@ -416,9 +416,8 @@ namespace io.nulldata.letsencrypt_with_dnspod
                 certificate = new X509Certificate2(pfxFilename, "hello",
                     X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet |
                     X509KeyStorageFlags.Exportable);
-
-                certificate.FriendlyName =
-                    $"{binding.Host} {DateTime.Now.ToString("yyyy-MM-dd HHmmss")}";
+                var name = binding.AlternativeNames.Count == 1 ? binding.AlternativeNames[0] : binding.Host;
+                certificate.FriendlyName = $"{name} {DateTime.Now.ToString("yyyy-MM-dd HHmmss")}";
                 log.Debug($"{certificate.FriendlyName}");
 
                 log.Info($" Adding Certificate to Store");

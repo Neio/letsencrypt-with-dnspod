@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Weavers>
+  <Costura>
+     <Unmanaged32Assemblies>
+        x86\ssleay32
+        x86\libeay32
+    </Unmanaged32Assemblies>
+    <Unmanaged64Assemblies>
+        x64\ssleay32
+        x64\libeay32
+    </Unmanaged64Assemblies>
+  </Costura>
+</Weavers>
